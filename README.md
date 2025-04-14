@@ -92,6 +92,7 @@ To use this server with Anthropic Claude Desktop, add the following configuratio
                  "CREDENTIALS_PATH": "/path/to/your/credentials.json",
                  "TOKEN_PATH": "/path/to/your/token.json",
                  "VAULT_PATH": "/path/to/your/obsidian/vault",
+                 "VAULT_DEFAULT_FOLDER": "your_default_folder",
                  "TRELLO_TOKEN": "your_trello_token",
                  "TRELLO_API_KEY": "your_trello_api_key"
          }
@@ -103,9 +104,10 @@ To use this server with Anthropic Claude Desktop, add the following configuratio
 Replace the paths and credentials with your actual values:
 - `command`: Path to your Python virtual environment's Python executable
 - `args`: Path to your project's `main.py` file
-- `CREDENTIALS_PATH`: Path to your Google Calendar credentials file
-- `TOKEN_PATH`: Path to your Google Calendar token file
-- `VAULT_PATH`: Path to your Obsidian vault
+- `GOOGLE_CREDENTIALS_PATH`: Path to your Google Calendar credentials file
+- `GOOGLE_TOKEN_PATH`: Path to your Google Calendar token file
+- `OBSIDIAN_VAULT_PATH`: Path to your Obsidian vault
+- `OBSIDIAN_DEFAULT_FOLDER`: Path to default folder in your vault where new notes will be created
 - `TRELLO_TOKEN`: Your Trello API token
 - `TRELLO_API_KEY`: Your Trello API key
 

@@ -1,9 +1,10 @@
 import os
 from pathlib import Path
 
-CREDENTIALS_PATH = os.getenv("CREDENTIALS_PATH")
-TOKEN_PATH = os.getenv("TOKEN_PATH")
-VAULT_PATH = Path(os.getenv("VAULT_PATH"))
+GOOGLE_CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH")
+GOOGLE_TOKEN_PATH = os.getenv("GOOGLE_TOKEN_PATH")
+GOOGLE_CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar"]
+OBSIDIAN_VAULT_PATH = Path(os.getenv("OBSIDIAN_VAULT_PATH"))
+OBSIDIAN_DEFAULT_FOLDER = os.getenv("OBSIDIAN_DEFAULT_FOLDER")
 TRELLO_API_KEY = os.getenv("TRELLO_API_KEY")
 TRELLO_TOKEN = os.getenv("TRELLO_TOKEN")
-SCOPES = ['https://www.googleapis.com/auth/calendar']

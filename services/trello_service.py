@@ -15,10 +15,7 @@ from config import TRELLO_API_KEY, TRELLO_TOKEN
 logger = logging.getLogger(__name__)
 
 # Initialize the Trello client
-client = TrelloClient(
-    api_key=TRELLO_API_KEY,
-    token=TRELLO_TOKEN
-)
+client = TrelloClient(api_key=TRELLO_API_KEY, token=TRELLO_TOKEN)
 
 
 def list_boards() -> List[str]:
@@ -109,7 +106,9 @@ def create_card(list_id: str, name: str, description: Optional[str] = "") -> str
         return "Failed to create card. "
 
 
-def update_card(card_id: str, name: Optional[str] = None, description: Optional[str] = None) -> str:
+def update_card(
+    card_id: str, name: Optional[str] = None, description: Optional[str] = None
+) -> str:
     """
     Updates an existing card's name and/or description.
 
@@ -171,7 +170,7 @@ def search_cards(query: str) -> List[str]:
         Errors are logged in case of an exception.
     """
     try:
-        cards = client.search(query, models=['cards'])
+        cards = client.search(query, models=["cards"])
         return [f"{card['name']} (ID: {card['id']})" for card in cards]
     except Exception as e:
         logger.error(f"Failed to search cards: {e}")

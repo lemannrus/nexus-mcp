@@ -1,10 +1,31 @@
 import logging
+from pathlib import Path
 from typing import Optional, List
-from config import VAULT_PATH
+from config import OBSIDIAN_VAULT_PATH, OBSIDIAN_DEFAULT_FOLDER
 
 logger = logging.getLogger(__name__)
 
-def create_note(title: str, folder_name: Optional[str] = None, content: Optional[str] = "") -> str:
+
+def get_note_path(title: str, folder_name: Optional[str] = None) -> Path:
+    """
+    Create the path to specific note
+
+    Args:
+        title (str): The title of the note (used as filename).
+        folder_name (Optional[str]): Optional subfolder within the vault.
+
+    Returns:
+        str: path to note
+    """
+    if folder_name is None:
+        folder_name = OBSIDIAN_DEFAULT_FOLDER
+    note_path = OBSIDIAN_VAULT_PATH / folder_name / f"{title}.md"
+    return note_path
+
+
+def create_note(
+    title: str, folder_name: Optional[str] = None, content: Optional[str] = ""
+) -> str:
     """
     Create a new markdown note in the specified folder.
 
@@ -17,14 +38,15 @@ def create_note(title: str, folder_name: Optional[str] = None, content: Optional
         str: Status message indicating success or failure.
     """
     try:
-        note_path = (VAULT_PATH / folder_name / f"{title}.md") if folder_name else (VAULT_PATH / f"{title}.md")
+        note_path = get_note_path(title, folder_name)
         if note_path.exists():
             return f"Note '{title}' already exists."
         note_path.write_text(content, encoding="utf-8")
         return f"Note '{title}' created."
     except Exception as e:
         logger.error(f"Failed to create note: {e}")
-        return "Failed to create note."
+        return f"Failed to create note. {e}"
+
 
 def read_note(title: str, folder_name: Optional[str] = None) -> str:
     """
@@ -38,13 +60,14 @@ def read_note(title: str, folder_name: Optional[str] = None) -> str:
         str: The content of the note, or an error message if it doesn't exist.
     """
     try:
-        note_path = (VAULT_PATH / folder_name / f"{title}.md") if folder_name else (VAULT_PATH / f"{title}.md")
+        note_path = get_note_path(title, folder_name)
         if not note_path.exists():
             return f"Note '{title}' not found."
         return note_path.read_text(encoding="utf-8")
     except Exception as e:
         logger.error(f"Failed to read note: {e}")
         return "Failed to read note."
+
 
 def update_note(title: str, new_content: str, folder_name: Optional[str] = None) -> str:
     """
@@ -59,7 +82,7 @@ def update_note(title: str, new_content: str, folder_name: Optional[str] = None)
         str: Status message indicating success or failure.
     """
     try:
-        note_path = (VAULT_PATH / folder_name / f"{title}.md") if folder_name else (VAULT_PATH / f"{title}.md")
+        note_path = get_note_path(title, folder_name)
         if not note_path.exists():
             return f"Note '{title}' not found."
         note_path.write_text(new_content, encoding="utf-8")
@@ -67,6 +90,7 @@ def update_note(title: str, new_content: str, folder_name: Optional[str] = None)
     except Exception as e:
         logger.error(f"Failed to update note: {e}")
         return "Failed to update note."
+
 
 def delete_note(title: str, folder_name: Optional[str] = None) -> str:
     """
@@ -80,7 +104,7 @@ def delete_note(title: str, folder_name: Optional[str] = None) -> str:
         str: Status message indicating success or failure.
     """
     try:
-        note_path = (VAULT_PATH / folder_name / f"{title}.md") if folder_name else (VAULT_PATH / f"{title}.md")
+        note_path = get_note_path(title, folder_name)
         if not note_path.exists():
             return f"Note '{title}' not found."
         note_path.unlink()
@@ -88,6 +112,7 @@ def delete_note(title: str, folder_name: Optional[str] = None) -> str:
     except Exception as e:
         logger.error(f"Failed to delete note: {e}")
         return "Failed to delete note."
+
 
 def search_notes_by_content(keyword: str) -> List[str]:
     """
@@ -101,16 +126,20 @@ def search_notes_by_content(keyword: str) -> List[str]:
     """
     matching_notes = []
     try:
-        for md_file in VAULT_PATH.rglob("*.md"):
+        for md_file in OBSIDIAN_VAULT_PATH.rglob("*.md"):
             try:
                 content = md_file.read_text(encoding="utf-8")
-                if keyword.lower() in content.lower() or keyword.lower() in md_file.name.lower():
-                    matching_notes.append(str(md_file.relative_to(VAULT_PATH)))
+                if (
+                    keyword.lower() in content.lower()
+                    or keyword.lower() in md_file.name.lower()
+                ):
+                    matching_notes.append(str(md_file.relative_to(OBSIDIAN_VAULT_PATH)))
             except Exception as e:
                 logger.warning(f"Failed to read file {md_file}: {e}")
     except Exception as e:
         logger.error(f"Failed to search notes: {e}")
     return matching_notes
+
 
 def create_folder(folder_name: str) -> str:
     """
@@ -122,7 +151,7 @@ def create_folder(folder_name: str) -> str:
     Returns:
         str: Status message indicating success or failure.
     """
-    folder_path = VAULT_PATH / folder_name
+    folder_path = OBSIDIAN_VAULT_PATH / folder_name
     try:
         if folder_path.exists():
             return f"Folder '{folder_name}' already exists."
@@ -131,6 +160,7 @@ def create_folder(folder_name: str) -> str:
     except Exception as e:
         logger.error(f"Failed to create folder: {e}")
         return "Failed to create folder."
+
 
 def delete_folder(folder_name: str) -> str:
     """
@@ -142,7 +172,7 @@ def delete_folder(folder_name: str) -> str:
     Returns:
         str: Status message indicating success or failure.
     """
-    folder_path = VAULT_PATH / folder_name
+    folder_path = OBSIDIAN_VAULT_PATH / folder_name
     try:
         if not folder_path.exists():
             return f"Folder '{folder_name}' not found."
@@ -153,6 +183,7 @@ def delete_folder(folder_name: str) -> str:
     except Exception as e:
         logger.error(f"Failed to delete folder: {e}")
         return "Failed to delete folder."
+
 
 def search_folders(keyword: str) -> List[str]:
     """
@@ -165,10 +196,15 @@ def search_folders(keyword: str) -> List[str]:
         List[str]: Relative paths to matching folders.
     """
     try:
-        return [str(folder.relative_to(VAULT_PATH)) for folder in VAULT_PATH.rglob('*') if folder.is_dir() and keyword.lower() in folder.name.lower()]
+        return [
+            str(folder.relative_to(OBSIDIAN_VAULT_PATH))
+            for folder in OBSIDIAN_VAULT_PATH.rglob("*")
+            if folder.is_dir() and keyword.lower() in folder.name.lower()
+        ]
     except Exception as e:
         logger.error(f"Failed to search folders: {e}")
         return []
+
 
 def list_folders() -> List[str]:
     """
@@ -178,7 +214,11 @@ def list_folders() -> List[str]:
         List[str]: Relative paths to all folders.
     """
     try:
-        return [str(folder.relative_to(VAULT_PATH)) for folder in VAULT_PATH.rglob('*') if folder.is_dir()]
+        return [
+            str(folder.relative_to(OBSIDIAN_VAULT_PATH))
+            for folder in OBSIDIAN_VAULT_PATH.rglob("*")
+            if folder.is_dir()
+        ]
     except Exception as e:
         logger.error(f"Failed to list folders: {e}")
         return []

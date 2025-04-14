@@ -17,6 +17,8 @@ google-auth-oauthlib = "^1.2.1"
 google-auth-httplib2 = "^0.2.0"
 beautifulsoup4 = "^4.13.3"
 py-trello = "^0.20.1"
+ruff = "^0.11.5"
+pre-commit = "^4.2.0"
 
 
 [build-system]
