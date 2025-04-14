@@ -56,16 +56,7 @@ A powerful personal assistant server that integrates with various services inclu
 
 ## Configuration
 
-1. Create a `config.py` file in the project root with the following structure:
-   ```python
-   GOOGLE_CALENDAR_CREDENTIALS = "credentials.json"
-   GOOGLE_CALENDAR_TOKEN = "token.json"
-   OBSIDIAN_VAULT_PATH = "/path/to/your/obsidian/vault"
-   TRELLO_API_KEY = "your_trello_api_key"
-   TRELLO_API_TOKEN = "your_trello_api_token"
-   ```
-
-2. Run the initial setup to authenticate with Google Calendar:
+1. Run the initial setup to authenticate with Google Calendar:
    ```bash
    poetry run python main.py
    ```
