@@ -89,10 +89,10 @@ To use this server with Anthropic Claude Desktop, add the following configuratio
          "command": "/path/to/your/venv/bin/python",
          "args": ["/path/to/your/project/main.py"],
          "env": {
-                 "CREDENTIALS_PATH": "/path/to/your/credentials.json",
-                 "TOKEN_PATH": "/path/to/your/token.json",
-                 "VAULT_PATH": "/path/to/your/obsidian/vault",
-                 "VAULT_DEFAULT_FOLDER": "your_default_folder",
+                 "GOOGLE_CREDENTIALS_PATH": "/path/to/your/credentials.json",
+                 "GOOGLE_TOKEN_PATH": "/path/to/your/token.json",
+                 "OBSIDIAN_VAULT_PATH": "/path/to/your/obsidian/vault",
+                 "OBSIDIAN_DEFAULT_FOLDER": "your_default_folder",
                  "TRELLO_TOKEN": "your_trello_token",
                  "TRELLO_API_KEY": "your_trello_api_key"
          }
