@@ -116,10 +116,6 @@ Replace the paths and credentials with your actual values:
 - Service-specific implementations are in the `services/` directory
 - Follow PEP 8 style guidelines for Python code
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
 ## Contributing
 
 1. Fork the repository
