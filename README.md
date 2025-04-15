@@ -129,4 +129,4 @@ Replace the paths and credentials with your actual values:
 Join:
 
 [Telegram](https://t.me/systemlog_ai)
-[Website](https://neuromant.wordpress.com/)
+[Blog](https://neuromant.wordpress.com/)
