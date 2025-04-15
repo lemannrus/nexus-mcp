@@ -106,16 +106,21 @@ def create_card(list_id: str, name: str, description: Optional[str] = "") -> str
         return "Failed to create card. "
 
 
+# Update a card's name, description, and optionally move it to a different list
 def update_card(
-    card_id: str, name: Optional[str] = None, description: Optional[str] = None
+    card_id: str,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    list_id: Optional[str] = None,
 ) -> str:
     """
-    Updates an existing card's name and/or description.
+    Updates an existing card's name, description, and/or list.
 
     Args:
         card_id (str): The ID of the card to be updated.
         name (Optional[str]): The new name for the card (optional).
         description (Optional[str]): The new description for the card (optional).
+        list_id (Optional[str]): The ID of the new list to move the card to (optional).
 
     Returns:
         str: A message indicating whether the card update was successful or not.
@@ -128,6 +133,8 @@ def update_card(
             card.set_name(name)
         if description:
             card.set_description(description)
+        if list_id:
+            card.change_list(list_id)
         return f"Card '{card.name}' updated."
     except Exception as e:
         logger.error(f"Failed to update card: {e}")
