@@ -16,8 +16,9 @@ def get_note_path(title: str, folder_name: Optional[str] = None) -> Path:
         str: path to note
     """
     if folder_name is None:
-        folder_name = OBSIDIAN_DEFAULT_FOLDER
-    note_path = OBSIDIAN_VAULT_PATH / folder_name / f"{title}.md"
+        note_path = OBSIDIAN_VAULT_PATH / f"{title}.md"
+    else:
+        note_path = OBSIDIAN_VAULT_PATH / folder_name / f"{title}.md"
     return note_path
 
 
