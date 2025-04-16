@@ -126,3 +126,8 @@ Replace the paths and credentials with your actual values:
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+Join:
+
+[Telegram](https://t.me/systemlog_ai)
+[Blog](https://neuromant.wordpress.com/)
