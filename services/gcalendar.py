@@ -12,7 +12,6 @@ The module also utilizes a logger to log errors and notable actions for debuggin
 """
 
 import datetime
-import logging
 from pathlib import Path
 from typing import Optional, List
 from google.oauth2.credentials import Credentials
@@ -20,8 +19,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build, Resource
 from google.auth.transport.requests import Request
 from config import GOOGLE_CREDENTIALS_PATH, GOOGLE_TOKEN_PATH, GOOGLE_CALENDAR_SCOPES
-
-logger = logging.getLogger(__name__)
+from services.logger import logger
 
 
 def get_calendar_service() -> Resource:
@@ -43,17 +41,17 @@ def get_calendar_service() -> Resource:
     try:
         if Path(GOOGLE_TOKEN_PATH).exists():
             creds = Credentials.from_authorized_user_file(
-                str(GOOGLE_TOKEN_PATH), GOOGLE_CALENDAR_SCOPES
+                GOOGLE_TOKEN_PATH, GOOGLE_CALENDAR_SCOPES
             )
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
                 flow = InstalledAppFlow.from_client_secrets_file(
-                    GOOGLE_CREDENTIALS_PATH, GOOGLE_CALENDAR_SCOPES
+                    str(Path(GOOGLE_CREDENTIALS_PATH)), GOOGLE_CALENDAR_SCOPES
                 )
                 creds = flow.run_local_server(port=0)
-            with open(GOOGLE_TOKEN_PATH, "w") as token:
+            with open(Path(GOOGLE_TOKEN_PATH), "w") as token:
                 token.write(creds.to_json())
         return build("calendar", "v3", credentials=creds)
     except Exception as e:
@@ -111,7 +109,7 @@ def create_event(
         return f"Failed to create event. {e}"
 
 
-def list_events(max_results: int = 10) -> List[str]:
+def list_events(max_results: int = 30) -> List[str]:
     """
     Retrieve a list of upcoming events from the primary calendar.
 
@@ -123,19 +121,18 @@ def list_events(max_results: int = 10) -> List[str]:
     """
     try:
         service = get_calendar_service()
-        now = datetime.datetime.utcnow().isoformat() + "Z"
+        now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
         events_result = (
             service.events()
             .list(
                 calendarId="primary",
                 timeMin=now,
-                maxResults=max_results,
+                maxResults=10,
                 singleEvents=True,
                 orderBy="startTime",
             )
             .execute()
         )
-
         events = events_result.get("items", [])
         event_list = [
             f"{event['start'].get('dateTime', event['start'].get('date'))} - {event.get('summary')}"

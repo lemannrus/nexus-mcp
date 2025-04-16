@@ -6,13 +6,10 @@ It includes functions for listing boards, lists, and cards, as well as creating,
 In addition, it logs errors for any exceptions using the `logging` module.
 """
 
-import logging
 from typing import List, Optional
 from trello import TrelloClient
 from config import TRELLO_API_KEY, TRELLO_TOKEN
-
-# Configure logging
-logger = logging.getLogger(__name__)
+from services.logger import logger
 
 # Initialize the Trello client
 client = TrelloClient(api_key=TRELLO_API_KEY, token=TRELLO_TOKEN)

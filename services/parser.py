@@ -1,9 +1,8 @@
-import logging
 from typing import Dict
 import requests
 from bs4 import BeautifulSoup
 
-logger = logging.getLogger(__name__)
+from services.logger import logger
 
 
 def parse_webpage(url: str) -> Dict[str, str]:
@@ -18,7 +17,7 @@ def parse_webpage(url: str) -> Dict[str, str]:
         response.raise_for_status()
     except requests.RequestException as e:
         logger.error(f"Failed to fetch webpage: {e}")
-        return {"error": f"Failed to load the page: {e}"}
+        return {"error": f"Failed to load the page"}
 
     try:
         soup = BeautifulSoup(response.text, "html.parser")

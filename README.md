@@ -93,6 +93,7 @@ To use this server with Anthropic Claude Desktop, add the following configuratio
                  "GOOGLE_TOKEN_PATH": "/path/to/your/token.json",
                  "OBSIDIAN_VAULT_PATH": "/path/to/your/obsidian/vault",
                  "OBSIDIAN_DEFAULT_FOLDER": "your_default_folder",
+                 "LOG_PATH": "/path/to/log.txt",
                  "TRELLO_TOKEN": "your_trello_token",
                  "TRELLO_API_KEY": "your_trello_api_key"
          }

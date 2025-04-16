@@ -1,9 +1,7 @@
-import logging
 from pathlib import Path
 from typing import Optional, List
 from config import OBSIDIAN_VAULT_PATH, OBSIDIAN_DEFAULT_FOLDER
-
-logger = logging.getLogger(__name__)
+from services.logger import logger
 
 
 def get_note_path(title: str, folder_name: Optional[str] = None) -> Path:
