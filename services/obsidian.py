@@ -13,6 +13,7 @@ cached_embeddings: Optional[np.ndarray] = None
 cached_paths: Optional[List[str]] = None
 model: Optional[SentenceTransformer] = None
 
+
 def get_note_path(title: str, folder_name: Optional[str] = None) -> Path:
     """
     Create the path to specific note
@@ -146,7 +147,9 @@ def load_vectors(json_path: str) -> Tuple[np.ndarray, List[str]]:
     return np.array(embeddings, dtype=np.float32), paths
 
 
-def initialize_semantic_search(vector_json_path: str, model_name: str = "nomic-ai/nomic-embed-text-v1.5"):
+def initialize_semantic_search(
+    vector_json_path: str, model_name: str = "nomic-ai/nomic-embed-text-v1.5"
+):
     """
     Initialize global variables for semantic search:
     model, embeddings, and their associated note paths.
@@ -162,13 +165,17 @@ def initialize_semantic_search(vector_json_path: str, model_name: str = "nomic-a
     try:
         cached_embeddings, cached_paths = load_vectors(vector_json_path)
         model = SentenceTransformer(model_name, trust_remote_code=True)
-        logger.info(f"Semantic search initialized: {cached_embeddings.shape[0]} embeddings loaded.")
+        logger.info(
+            f"Semantic search initialized: {cached_embeddings.shape[0]} embeddings loaded."
+        )
     except Exception as e:
         logger.error(f"Initialization failed: {e}")
         cached_embeddings, cached_paths, model = None, None, None
 
 
-def semantic_search(query: str, embeddings: np.ndarray, paths: List[str], top_k: int = 5) -> List[str]:
+def semantic_search(
+    query: str, embeddings: np.ndarray, paths: List[str], top_k: int = 5
+) -> List[str]:
     """
     Perform semantic search over precomputed embeddings.
 
@@ -183,16 +190,22 @@ def semantic_search(query: str, embeddings: np.ndarray, paths: List[str], top_k:
     """
     global cached_embeddings, cached_paths, model
     if cached_embeddings is None or cached_paths is None or model is None:
-        logger.warning("Semantic search not initialized. Call initialize_semantic_search first.")
+        logger.warning(
+            "Semantic search not initialized. Call initialize_semantic_search first."
+        )
         return []
-    model = SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
+    model = SentenceTransformer(
+        "nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True
+    )
     query_vec = model.encode([query], convert_to_numpy=True)
     similarities = cosine_similarity(query_vec, embeddings)[0]
     top_indices = similarities.argsort()[-top_k:][::-1]
     return [paths[i] for i in top_indices]
 
 
-def search_notes_by_semantics(query: str, vector_json_path: str, top_k: int = 5) -> List[str]:
+def search_notes_by_semantics(
+    query: str, vector_json_path: str, top_k: int = 5
+) -> List[str]:
     """
     Perform semantic search using vector data stored in a file.
 
@@ -256,7 +269,6 @@ def search_notes_by_content(keyword: str) -> List[str]:
     else:
         logger.info("Semantic search disabled")
         return simple_search_by_keyword(keyword)
-
 
 
 def create_folder(folder_name: str) -> str:
