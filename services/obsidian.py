@@ -1,8 +1,17 @@
+import json
 from pathlib import Path
-from typing import Optional, List
-from config import OBSIDIAN_VAULT_PATH, OBSIDIAN_DEFAULT_FOLDER
-from services.logger import logger
+from typing import Optional, List, Tuple
 
+import numpy as np
+
+from config import OBSIDIAN_VAULT_PATH, SEMANTIC_SEARCH_ENABLED, EMBEDDINGS_PATH
+from services.logger import logger
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+
+cached_embeddings: Optional[np.ndarray] = None
+cached_paths: Optional[List[str]] = None
+model: Optional[SentenceTransformer] = None
 
 def get_note_path(title: str, folder_name: Optional[str] = None) -> Path:
     """
@@ -113,9 +122,99 @@ def delete_note(title: str, folder_name: Optional[str] = None) -> str:
         return "Failed to delete note."
 
 
-def search_notes_by_content(keyword: str) -> List[str]:
+def load_vectors(json_path: str) -> Tuple[np.ndarray, List[str]]:
     """
-    Search for notes containing a specific keyword in their content or filename.
+    Load vector embeddings and associated note paths from a JSON file.
+
+    Args:
+        json_path (str): Path to the JSON file containing vector data.
+
+    Returns:
+        Tuple[np.ndarray, List[str]]: A tuple with:
+            - Numpy array of embeddings.
+            - List of file paths corresponding to embeddings.
+    """
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    logger.info(f"Loaded {len(data['vectors'])} vectors from {json_path}")
+    embeddings = []
+    paths = []
+    for item in data["vectors"]:
+        embeddings.append(item["embedding"])
+        paths.append(item["path"])
+
+    return np.array(embeddings, dtype=np.float32), paths
+
+
+def initialize_semantic_search(vector_json_path: str, model_name: str = "nomic-ai/nomic-embed-text-v1.5"):
+    """
+    Initialize global variables for semantic search:
+    model, embeddings, and their associated note paths.
+
+    Args:
+        vector_json_path (str): Path to the JSON file with precomputed vectors.
+        model_name (str): Name of the embedding model to use.
+    """
+    global cached_embeddings, cached_paths, model
+    if cached_embeddings is not None and cached_paths is not None and model is not None:
+        return  # Already initialized
+
+    try:
+        cached_embeddings, cached_paths = load_vectors(vector_json_path)
+        model = SentenceTransformer(model_name, trust_remote_code=True)
+        logger.info(f"Semantic search initialized: {cached_embeddings.shape[0]} embeddings loaded.")
+    except Exception as e:
+        logger.error(f"Initialization failed: {e}")
+        cached_embeddings, cached_paths, model = None, None, None
+
+
+def semantic_search(query: str, embeddings: np.ndarray, paths: List[str], top_k: int = 5) -> List[str]:
+    """
+    Perform semantic search over precomputed embeddings.
+
+    Args:
+        query (str): Text query to search for.
+        embeddings (np.ndarray): Array of note embeddings.
+        paths (List[str]): List of paths corresponding to embeddings.
+        top_k (int): Number of top results to return.
+
+    Returns:
+        List[str]: Top matching note paths.
+    """
+    global cached_embeddings, cached_paths, model
+    if cached_embeddings is None or cached_paths is None or model is None:
+        logger.warning("Semantic search not initialized. Call initialize_semantic_search first.")
+        return []
+    model = SentenceTransformer("nomic-ai/nomic-embed-text-v1.5", trust_remote_code=True)
+    query_vec = model.encode([query], convert_to_numpy=True)
+    similarities = cosine_similarity(query_vec, embeddings)[0]
+    top_indices = similarities.argsort()[-top_k:][::-1]
+    return [paths[i] for i in top_indices]
+
+
+def search_notes_by_semantics(query: str, vector_json_path: str, top_k: int = 5) -> List[str]:
+    """
+    Perform semantic search using vector data stored in a file.
+
+    Args:
+        query (str): Text query to search for.
+        vector_json_path (str): Path to JSON file containing vectors.
+        top_k (int): Number of top matches to return.
+
+    Returns:
+        List[str]: Paths of notes that best match the query.
+    """
+    try:
+        embeddings, paths = load_vectors(vector_json_path)
+        return semantic_search(query, embeddings, paths, top_k)
+    except Exception as e:
+        logger.error(f"Semantic search failed: {e}")
+        return []
+
+
+def simple_search_by_keyword(keyword: str) -> List[str]:
+    """
+    Search for notes containing a specific keyword in content or filename.
 
     Args:
         keyword (str): The keyword to search for.
@@ -138,6 +237,26 @@ def search_notes_by_content(keyword: str) -> List[str]:
     except Exception as e:
         logger.error(f"Failed to search notes: {e}")
     return matching_notes
+
+
+def search_notes_by_content(keyword: str) -> List[str]:
+    """
+    Dispatch content search using either semantic or keyword search.
+
+    Args:
+        keyword (str): Search keyword or phrase.
+
+    Returns:
+        List[str]: Paths to notes that match the search.
+    """
+    if SEMANTIC_SEARCH_ENABLED:
+        initialize_semantic_search(OBSIDIAN_VAULT_PATH / EMBEDDINGS_PATH)
+        logger.info("Semantic search enabled")
+        return search_notes_by_semantics(keyword, OBSIDIAN_VAULT_PATH / EMBEDDINGS_PATH)
+    else:
+        logger.info("Semantic search disabled")
+        return simple_search_by_keyword(keyword)
+
 
 
 def create_folder(folder_name: str) -> str:

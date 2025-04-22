@@ -95,7 +95,9 @@ To use this server with Anthropic Claude Desktop, add the following configuratio
                  "OBSIDIAN_DEFAULT_FOLDER": "your_default_folder",
                  "LOG_PATH": "/path/to/log.txt",
                  "TRELLO_TOKEN": "your_trello_token",
-                 "TRELLO_API_KEY": "your_trello_api_key"
+                 "TRELLO_API_KEY": "your_trello_api_key",
+                 "SEMANTIC_SEARCH_ENABLED": "True/False",
+                 "EMBEDDINGS_PATH": "/path/to/embeddings.json"
          }
       }
    }
@@ -111,6 +113,18 @@ Replace the paths and credentials with your actual values:
 - `OBSIDIAN_DEFAULT_FOLDER`: Path to default folder in your vault where new notes will be created
 - `TRELLO_TOKEN`: Your Trello API token
 - `TRELLO_API_KEY`: Your Trello API key
+- `SEMANTIC_SEARCH_ENABLED`: Enable semantic search for Obsidian Vault
+- `EMBEDDINGS_PATH`: Path to embeddings json 
+
+To enable semantic search capabilities, you'll need to install the Vector Search plugin for Obsidian.
+
+![img.png](assets/img.png)
+
+After the reindexing process is complete, the plugin will generate a JSON file containing vector embeddings at the following location:
+
+```.obsidian/plugins/vector-search/data.json```
+
+This file will be used as the embedding source for semantic search queries.
 
 ## Development
 

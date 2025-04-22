@@ -22,6 +22,7 @@ Modules Registered:
 import logging
 from mcp.server.fastmcp import FastMCP
 
+from config import SEMANTIC_SEARCH_ENABLED, OBSIDIAN_VAULT_PATH, EMBEDDINGS_PATH
 # Calendar tools
 from services.gcalendar import create_event, list_events, update_event, delete_event
 
@@ -35,7 +36,7 @@ from services.obsidian import (
     create_folder,
     delete_folder,
     search_folders,
-    list_folders,
+    list_folders, initialize_semantic_search,
 )
 
 # Trello tools
@@ -104,5 +105,7 @@ mcp.tool()(parse_webpage)  # Extract and clean HTML content from a given URL
 # ======================
 
 if __name__ == "__main__":
+    if SEMANTIC_SEARCH_ENABLED:
+        initialize_semantic_search(OBSIDIAN_VAULT_PATH / EMBEDDINGS_PATH)
     # Start the FastMCP server
     mcp.run()
