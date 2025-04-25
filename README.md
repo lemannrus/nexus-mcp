@@ -1,6 +1,11 @@
 # Personal Assistant MCP Server
 
-A powerful personal assistant server that integrates with various services including Google Calendar, Obsidian Vault, Trello, and web page parsing capabilities. Built using FastMCP, this server provides a unified interface for managing your digital life.
+<div style="display: flex; align-items: flex-start; margin-bottom: 20px;">
+  <div style="flex: 0 0 700px; margin-right: 20px;">
+    <img alt="codsworth.png" src="assets/codsworth.png" width="700px"/>
+  </div>
+  <div style="flex: 1;">
+    A powerful personal assistant server that integrates with various services including Google Calendar, Obsidian Vault, Trello, and web page parsing capabilities. Built using FastMCP, this server provides a unified interface for managing your digital life.
 
 ## Features
 
@@ -23,6 +28,8 @@ A powerful personal assistant server that integrates with various services inclu
 
 - **Google News Search**
   - Search for recent news articles on a given topic
+  </div>
+</div>
 
 ## Prerequisites
 
