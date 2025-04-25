@@ -17,7 +17,7 @@ def parse_webpage(url: str) -> Dict[str, str]:
         response.raise_for_status()
     except requests.RequestException as e:
         logger.error(f"Failed to fetch webpage: {e}")
-        return {"error": f"Failed to load the page"}
+        return {"error": "Failed to load the page"}
 
     try:
         soup = BeautifulSoup(response.text, "html.parser")

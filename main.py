@@ -11,12 +11,6 @@ for interacting with external services including:
 
 Each tool is registered using the `@mcp.tool()` decorator, enabling
 MCP-compatible clients to invoke them via a common interface.
-
-Modules Registered:
-- services/gcalendar.py
-- services/obsidian.py
-- services/trello_service.py
-- services/parser.py
 """
 
 import logging
@@ -65,42 +59,80 @@ mcp = FastMCP("Personal Assistant MCP server")
 # Calendar Tool Registration
 # ======================
 
-mcp.tool()(create_event)  # Create a new calendar event
-mcp.tool()(list_events)  # List upcoming calendar events
-mcp.tool()(update_event)  # Update an existing event by ID
-mcp.tool()(delete_event)  # Delete a calendar event by ID
+mcp.tool(
+    description="Create a new event in Google Calendar. Requires title, time, and optionally description and participants."
+)(create_event)
+mcp.tool(
+    description="List upcoming Google Calendar events. Optional filters by date or keyword."
+)(list_events)
+mcp.tool(
+    description="Update an existing Google Calendar event by ID. Title, time, and description can be modified."
+)(update_event)
+mcp.tool(description="Delete an existing Google Calendar event by its ID.")(
+    delete_event
+)
 
 # ======================
 # Obsidian Vault Tool Registration
 # ======================
 
-mcp.tool()(create_note)  # Create a new markdown note
-mcp.tool()(read_note)  # Read contents of a markdown note
-mcp.tool()(update_note)  # Update note content
-mcp.tool()(delete_note)  # Delete a note
-mcp.tool()(search_notes_by_content)  # Full-text search in notes
-mcp.tool()(create_folder)  # Create a new folder in the vault
-mcp.tool()(delete_folder)  # Delete an existing folder
-mcp.tool()(search_folders)  # Search for folders by name
-mcp.tool()(list_folders)  # List all folders in the vault
+mcp.tool(
+    description="Create a new markdown note in the Obsidian vault. Title must be unique. Content is optional."
+)(create_note)
+mcp.tool(
+    description="Read the contents of a note by title. Searches the entire Obsidian vault recursively by file name."
+)(read_note)
+mcp.tool(
+    description="Update the content of an existing note by title. The note is found recursively by name."
+)(update_note)
+mcp.tool(
+    description="Delete a note by title. The note is located recursively across the vault. Always ask confirmation for this"
+)(delete_note)
+mcp.tool(
+    description="Search for notes using either semantic similarity (if enabled) or keyword matching. Returns a list of relative paths."
+)(search_notes_by_content)
+mcp.tool(
+    description="Create a new folder inside the Obsidian vault. Folder names can include subpaths like 'projects/ai'."
+)(create_folder)
+mcp.tool(
+    description="Delete an empty folder from the vault by name. Fails if the folder contains files."
+)(delete_folder)
+mcp.tool(
+    description="Search vault folders by keyword in their name. Returns relative paths."
+)(search_folders)
+mcp.tool(description="List all folders currently present inside the Obsidian vault.")(
+    list_folders
+)
 
 # ======================
 # Trello Tool Registration
 # ======================
 
-mcp.tool()(list_boards)  # List all Trello boards
-mcp.tool()(list_lists)  # List lists in a Trello board
-mcp.tool()(list_cards)  # List cards in a Trello list
-mcp.tool()(create_card)  # Create a new Trello card
-mcp.tool()(update_card)  # Update an existing card
-mcp.tool()(delete_card)  # Delete a card by ID
-mcp.tool()(search_cards)  # Search Trello cards by text query
+mcp.tool(description="List all Trello boards available to the user.")(list_boards)
+mcp.tool(
+    description="List all lists (columns) on a given Trello board. Requires the board ID."
+)(list_lists)
+mcp.tool(description="List all cards in a specific Trello list. Requires the list ID.")(
+    list_cards
+)
+mcp.tool(
+    description="Create a new Trello card in the specified list. Requires list ID and card title."
+)(create_card)
+mcp.tool(
+    description="Update a Trello card by ID. You can modify title, description, and other attributes."
+)(update_card)
+mcp.tool(description="Delete a Trello card by its ID.")(delete_card)
+mcp.tool(description="Search Trello cards by a keyword in their title or description.")(
+    search_cards
+)
 
 # ======================
 # Web Parsing Tool
 # ======================
 
-mcp.tool()(parse_webpage)  # Extract and clean HTML content from a given URL
+mcp.tool(
+    description="Extracts and cleans text content from a given webpage URL. Removes scripts, styles, and navigation clutter."
+)(parse_webpage)
 
 # ======================
 # Entry Point
@@ -109,5 +141,4 @@ mcp.tool()(parse_webpage)  # Extract and clean HTML content from a given URL
 if __name__ == "__main__":
     if SEMANTIC_SEARCH_ENABLED:
         initialize_semantic_search(OBSIDIAN_VAULT_PATH / EMBEDDINGS_PATH)
-    # Start the FastMCP server
     mcp.run()
