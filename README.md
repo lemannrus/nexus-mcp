@@ -31,6 +31,8 @@
   </div>
 </div>
 
+Join me in [Telegram](https://t.me/systemlog_ai) and [Blog](https://neuromant.wordpress.com/)
+
 ## Prerequisites
 
 - Python 3.10 or higher
@@ -165,8 +167,3 @@ This file will be used as the embedding source for semantic search queries.
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
-
-Join:
-
-[Telegram](https://t.me/systemlog_ai)
-[Blog](https://neuromant.wordpress.com/)
