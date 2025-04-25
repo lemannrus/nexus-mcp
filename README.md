@@ -153,6 +153,11 @@ After the reindexing process is complete, the plugin will generate a JSON file c
 
 This file will be used as the embedding source for semantic search queries.
 
+## Recommended clients:
+
+- [Anthropic Claude Desktop](https://claude.ai/download)
+- [5ire](https://github.com/nanbingxyz/5ire)
+
 ## Development
 
 - The project uses Poetry for dependency management
