@@ -56,7 +56,7 @@ from services.google_news import search_news_google
 logging.basicConfig(level=logging.INFO)
 
 # Initialize FastMCP server instance
-mcp = FastMCP("Personal Assistant MCP server")
+mcp = FastMCP("Nexus MCP server")
 
 # ======================
 # Tool registry
@@ -157,7 +157,7 @@ if ENABLE_NEWS_SEARCH:
 # ======================
 
 for func, description in tools:
-    mcp.tool(description)(func)
+    mcp.tool(description=description)(func)
 
 # ======================
 # Entry Point
