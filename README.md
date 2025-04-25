@@ -45,8 +45,8 @@ Join me in [Telegram](https://t.me/systemlog_ai) and [Blog](https://neuromant.wo
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/personal-assistant-mcp.git
-   cd personal-assistant-mcp
+   git clone https://github.com/yourusername/nexus-mcp.git
+   cd nexus-mcp
    ```
 
 2. Install dependencies using Poetry:
