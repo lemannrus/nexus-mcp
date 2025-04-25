@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "personal-assistant-mcp"
+name = "nexus-mcp"
 version = "0.1.2"
 description = "Personal assistant MCP server"
 authors = [

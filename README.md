@@ -1,11 +1,11 @@
-# Personal Assistant MCP Server
+# Nexus MCP
 
 <div style="display: flex; align-items: flex-start; margin-bottom: 20px;">
   <div style="flex: 0 0 800px; margin-right: 20px;">
     <img alt="codsworth.png" src="assets/codsworth.png" width="800px"/>
   </div>
   <div style="flex: 1;">
-    A powerful personal assistant server that integrates with various services including Google Calendar, Obsidian Vault, Trello, and web page parsing capabilities. Built using FastMCP, this server provides a unified interface for managing your digital life.
+    A powerful personal assistant MCP server that integrates with various services including Google Calendar, Obsidian Vault, Trello, and web page parsing capabilities. Built using FastMCP, this server provides a unified interface for managing your digital life.
 
 ## Features
 
