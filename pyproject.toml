@@ -23,6 +23,8 @@ sentence-transformers = "^4.1.0"
 scikit-learn = "^1.6.1"
 einops = "^0.8.1"
 hf-xet = "^1.0.3"
+obsidiantools = "^0.10.0"
+numpy = "1.26.4"
 
 
 [build-system]

@@ -21,11 +21,9 @@ from config import (
     ENABLE_CALENDAR_TOOLS,
     ENABLE_NEWS_SEARCH,
     ENABLE_WEB_PARSER,
-    SEMANTIC_SEARCH_ENABLED,
-    OBSIDIAN_VAULT_PATH,
-    EMBEDDINGS_PATH,
 )
 from services.gcalendar import create_event, list_events, update_event, delete_event
+from services.logger import logger
 from services.obsidian import (
     create_note,
     read_note,
@@ -36,7 +34,6 @@ from services.obsidian import (
     delete_folder,
     search_folders,
     list_folders,
-    initialize_semantic_search,
 )
 from services.trello_service import (
     list_boards,
@@ -164,6 +161,4 @@ for func, description in tools:
 # ======================
 
 if __name__ == "__main__":
-    if SEMANTIC_SEARCH_ENABLED:
-        initialize_semantic_search(OBSIDIAN_VAULT_PATH / EMBEDDINGS_PATH)
     mcp.run()

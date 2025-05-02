@@ -1,157 +1,240 @@
 import json
-import os
 from pathlib import Path
 from typing import Optional, List, Tuple
 
 import numpy as np
-from config import OBSIDIAN_VAULT_PATH, SEMANTIC_SEARCH_ENABLED, EMBEDDINGS_PATH
+from obsidiantools.api import Vault
+
+from config import OBSIDIAN_VAULT_PATH, SEMANTIC_SEARCH_ENABLED, EMBEDDINGS_PATH, OBSIDIAN_DEFAULT_FOLDER, \
+    SIMILARITY_THRESHOLD, MODEL_TOKEN_LIMIT, CHUNK_SIZE_TOKENS
 from services.logger import logger
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from transformers import GPT2TokenizerFast
 
-cached_embeddings: Optional[np.ndarray] = None
-cached_paths: Optional[List[str]] = None
-model: Optional[SentenceTransformer] = None
+_cached_vault: Optional[Vault] = None
 
-MODEL_TOKEN_LIMIT = 10000
-CHUNK_SIZE_TOKENS = 512
+_cached_embeddings: Optional[np.ndarray] = None
+_cached_paths: Optional[List[str]] = None
+_semantic_model: Optional[SentenceTransformer] = None
+_tokenizer = GPT2TokenizerFast.from_pretrained("gpt2") # Keep tokenizer global
 
-tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+def _get_vault() -> Vault:
+    """
+    Initializes and returns a cached ObsidianVault instance.
 
+    Reads OBSIDIAN_VAULT_PATH from config.
+
+    Returns:
+        An initialized ObsidianVault instance.
+
+    Raises:
+        FileNotFoundError: If the vault path is not a valid directory.
+        ImportError: If obsidiantools is not installed.
+    """
+    global _cached_vault
+    try:
+        if _cached_vault is None:
+            if not OBSIDIAN_VAULT_PATH:
+                logger.error("OBSIDIAN_VAULT_PATH is not set in config.")
+                raise ValueError("OBSIDIAN_VAULT_PATH is not configured.")
+
+            vault_path = Path(OBSIDIAN_VAULT_PATH)
+            if not vault_path.is_dir():
+                logger.error(f"Obsidian vault path is not a valid directory: {vault_path}")
+                raise FileNotFoundError(f"Obsidian vault not found at {vault_path}")
+
+            try:
+                logger.info(f"Initializing ObsidianVault at: {vault_path}")
+                # safe_mode=True can prevent execution of dataview/js, often safer for API usage
+                _cached_vault = Vault(vault_path)
+                logger.info(f"ObsidianVault initialized.")
+            except ImportError:
+                logger.error("obsidiantools library not found. Please install it: pip install obsidiantools")
+                raise
+            except Exception as e:
+                logger.error(f"Failed to initialize ObsidianVault: {e}", exc_info=True)
+                raise RuntimeError(f"Failed to initialize ObsidianVault: {e}") from e
+        return _cached_vault
+    except Exception as e:
+        logger.error(f"Failed to get ObsidianVault: {e}", exc_info=True)
+        raise RuntimeError(f"Failed to get ObsidianVault: {e}") from e
+
+def resolve_note_path(
+    title: str,
+    folder_name: Optional[str] = None,
+    ensure_exists: bool = False,
+) -> tuple[Path, str] | tuple[None, str] | None:
+    """
+    Resolves the absolute path for a note and its display folder name.
+
+    Handles finding existing notes or determining the path for creation.
+    Uses vault.markdown_notes for efficient searching of existing notes.
+
+    Args:
+        title: The title of the note (filename without extension).
+        folder_name: Optional subfolder name within the vault.
+        ensure_exists: If True, only returns a path if the note *file* already exists.
+                       If False, returns the intended path even if it doesn't exist.
+
+    Returns:
+        Tuple (note_path, display_folder):
+        - note_path: Path object to the note file, or None if not found when ensure_exists=True.
+        - display_folder: String name of the folder for display purposes.
+
+    Raises:
+        ValueError: If title is empty or vault is invalid.
+    """
+    try:
+        vault = _get_vault()
+
+        if not title:
+            raise ValueError("Note title cannot be empty.")
+        if not isinstance(vault, Vault):
+             raise TypeError("Invalid vault object provided.")
+
+        filename = f"{title}.md"
+        target_dir: Path
+        display_folder: str
+
+        logger.debug(f"Resolving path for title='{title}', folder='{folder_name}', ensure_exists={ensure_exists}")
+
+        if folder_name:
+            relative_folder_path = Path(folder_name.strip('/\\'))
+            target_dir = vault.dirpath / relative_folder_path
+            display_folder = relative_folder_path.as_posix()
+        else:
+            target_dir = vault.dirpath
+            display_folder = OBSIDIAN_DEFAULT_FOLDER
+
+        intended_path = target_dir / filename
+
+        if intended_path.exists() and intended_path.is_file():
+            logger.debug(f"Note found at specific path: {intended_path}")
+            note_exists_in_index = title in vault.md_file_index
+            indexed_path = vault.md_file_index.get(title)
+
+            if note_exists_in_index and indexed_path == intended_path:
+                 return intended_path, display_folder
+            else:
+                 logger.warning(f"Path {intended_path} exists but not in vault.markdown_notes. Treating as found.")
+                 return intended_path, display_folder
+
+        if folder_name and ensure_exists:
+             logger.debug(f"Note not found at specific path '{intended_path}' and ensure_exists=True.")
+             return None, display_folder
+
+        logger.debug(f"Note not at '{intended_path}', searching known markdown notes globally.")
+        found_globally: Optional[Path] = None
+
+        for note_path in vault.md_file_index.values():
+            if note_path.name == filename:
+                found_globally = note_path
+                logger.debug(f"Found matching filename in vault.markdown_notes: {found_globally}")
+                break
+
+        if found_globally:
+            actual_path = found_globally
+            try:
+                actual_relative_path = actual_path.parent.relative_to(vault.dirpath)
+                actual_display_folder = actual_relative_path.as_posix()
+                if actual_display_folder == '.': actual_display_folder = "vault root"
+            except ValueError:
+                logger.warning(f"Found path {actual_path} is outside vault root {vault.dirpath}?")
+                actual_display_folder = "[external?]"
+            logger.debug(f"Note found globally at: {actual_path} (display folder: '{actual_display_folder}')")
+            return actual_path, actual_display_folder
+        else:
+            logger.debug(f"Note '{filename}' not found anywhere in the vault's known markdown notes.")
+            if ensure_exists:
+                return None, display_folder
+            else:
+                logger.debug(f"Returning intended path for creation: {intended_path}")
+                return intended_path, display_folder
+    except Exception as e:
+        logger.error(f"Unexpected error resolving note path: {e}", exc_info=True)
+        raise RuntimeError(f"Unexpected error resolving note path: {e}") from e
 
 def tokenize_text(text: str) -> List[int]:
-    """
-    Tokenizes text using the preloaded tokenizer.
-
-    Args:
-        text: response text to tokenize
-
-    Returns:
-        tokenized text as a list of integers
-    """
+    """Tokenizes text using the preloaded tokenizer."""
     logger.debug(f"Tokenizing text of length {len(text)}")
-    return tokenizer.encode(text)
-
+    return _tokenizer.encode(text)
 
 def split_text_into_chunks(text: str, max_tokens: int) -> List[str]:
-    """
-    Splits text into chunks based on word boundaries and a maximum token count.
-
-    Args:
-        text: text to split into chunks
-        max_tokens: maximum number of tokens per chunk
-
-    Returns:
-        chunks of text as a list of strings
-    """
+    """Splits text into chunks based on word boundaries and a maximum token count."""
     logger.debug(f"Splitting text into chunks with max_tokens={max_tokens}")
     words = text.split()
-    chunks, current = [], []
+    chunks, current_chunk_words = [], []
+    current_token_count = 0
 
     for word in words:
-        current.append(word)
-        if len(tokenizer.encode(" ".join(current))) >= max_tokens:
-            chunks.append(" ".join(current))
-            current = []
-    if current:
-        chunks.append(" ".join(current))
+        word_token_count = len(_tokenizer.encode(word))
+        if current_token_count + word_token_count + (1 if current_chunk_words else 0) > max_tokens:
+            if current_chunk_words:
+                chunks.append(" ".join(current_chunk_words))
+            current_chunk_words = [word]
+            current_token_count = word_token_count
+            if word_token_count > max_tokens:
+                 logger.warning(f"Word '{word[:30]}...' exceeds max_tokens ({max_tokens}), chunk may be oversized.")
+                 chunks.append(" ".join(current_chunk_words))
+                 current_chunk_words = []
+                 current_token_count = 0
+        else:
+            current_chunk_words.append(word)
+            current_token_count += word_token_count + (1 if len(current_chunk_words) > 1 else 0)
+
+    if current_chunk_words:
+        chunks.append(" ".join(current_chunk_words))
 
     logger.debug(f"Split into {len(chunks)} chunks")
     return chunks
 
 
 def summarize_chunk(text_chunk: str) -> str:
-    """
-    Creates a simple summary of a text chunk by taking the first 200 characters.
-
-    Args:
-        text_chunk: text chunk to summarize
-
-    Returns:
-        summary of the text chunk as a string
-    """
+    """Creates a simple summary of a text chunk (first 200 chars)."""
     logger.debug(f"Summarizing chunk with {len(text_chunk)} characters")
     return f"Summary: {text_chunk[:200]}..."
 
-
-def get_note_path(title: str, folder_name: str = None) -> Optional[Path]:
-    """
-    Constructs the full path to a note file based on title and optional folder.
-
-    If a folder_name is provided, it checks for the note within that specific folder first.
-    If not found or no folder_name is given, it searches the entire vault recursively.
-    If the note doesn't exist, it returns the potential path for a new note in the vault root.
-
-    Args:
-        title: The title of the note (filename without extension).
-        folder_name: Optional name of the folder containing the note.
-
-    Returns:
-        A Path object to the note file, or None if an error occurred during search.
-        If the note doesn't exist, returns the intended path for creation.
-    """
-    logger.debug(f"Getting path for note: title='{title}', folder_name='{folder_name}'")
-    target_name = f"{title}.md"
-    if folder_name:
-        path = Path(OBSIDIAN_VAULT_PATH / folder_name / target_name)
-        if path.exists():
-            return path
-    try:
-        for path in OBSIDIAN_VAULT_PATH.rglob("*.md"):
-            if path.name == target_name:
-                return path
-        logger.warning(f"Note with title '{title}' not found. Creating new note.")
-        return OBSIDIAN_VAULT_PATH / target_name
-    except Exception as e:
-        logger.error(f"Failed to search for note '{title}': {e}")
-        return None
-
-
 def create_note(
-    title: str, folder_name: Optional[str] = None, content: Optional[str] = ""
+    title: str, folder_name: Optional[str] = None, content: Optional[str] = None
 ) -> str:
-    """
-    Creates a new markdown note in the specified folder or vault root.
-
-    Args:
-        title: The title for the new note (used as filename).
-        folder_name: Optional subfolder name within the vault.
-        content: Optional initial content for the note. Defaults to empty string.
-
-    Returns:
-        A status message indicating success or failure.
-    """
+    """Creates a new markdown note."""
+    note_content = content if content is not None else ""
     logger.debug(f"Creating note: title='{title}', folder_name='{folder_name}'")
     try:
-        note_path = get_note_path(title, folder_name)
+        note_path, display_folder = resolve_note_path(title, folder_name, ensure_exists=False)
+
         if note_path.exists():
-            return f"Note '{title}' already exists."
-        note_path.write_text(content, encoding="utf-8")
-        return f"Note '{title}' created."
+            logger.warning(f"Note '{note_path}' already exists.")
+            return f"Note '{title}' already exists in '{display_folder}'."
+
+        logger.debug(f"Ensuring directory exists: '{note_path.parent}'")
+        note_path.parent.mkdir(parents=True, exist_ok=True)
+
+        note_path.write_text(note_content, encoding="utf-8")
+        logger.info(f"Successfully created note at '{note_path}'")
+        return f"Note '{title}' created successfully in '{display_folder}'."
+
+    except (FileNotFoundError, ValueError, TypeError, RuntimeError, OSError) as e:
+        logger.error(f"Failed to create note '{title}': {e}", exc_info=isinstance(e, (RuntimeError, OSError)))
+        return f"Failed to create note '{title}'. Error: {e}"
     except Exception as e:
-        logger.error(f"Failed to create note: {e}")
-        return f"Failed to create note. {e}"
+        logger.error(f"Unexpected error creating note '{title}': {e}", exc_info=True)
+        return f"Failed to create note '{title}'. Unexpected error: {e}"
 
 
-def read_note(title: str) -> str:
-    """
-    Reads the content of an existing note.
-
-    If the note's token count exceeds MODEL_TOKEN_LIMIT, it returns a summarized version.
-
-    Args:
-        title: The title of the note to read.
-
-    Returns:
-        The full content of the note, a summarized version if too large, or an error message.
-    """
-    logger.debug(f"Reading note with title: '{title}'")
-    note_path = get_note_path(title)
-    if note_path is None or not note_path.exists():
-        return f"Note '{title}' not found."
-
+def read_note(title: str, folder_name: Optional[str] = None) -> str:
+    """Reads note content, summarizes if too large based on MODEL_TOKEN_LIMIT."""
+    logger.debug(f"Reading note: title='{title}', folder_name='{folder_name}'")
     try:
+        note_path, display_folder = resolve_note_path(title, folder_name, ensure_exists=True)
+
+        if note_path is None:
+            folder_info = f" in folder '{display_folder}'" if folder_name else ""
+            logger.warning(f"Note '{title}'{folder_info} not found.")
+            return f"Note '{title}'{folder_info} not found."
+
+        logger.debug(f"Reading content from: {note_path}")
         full_text = note_path.read_text(encoding="utf-8")
         num_tokens = len(tokenize_text(full_text))
 
@@ -160,336 +243,348 @@ def read_note(title: str) -> str:
         else:
             chunks = split_text_into_chunks(full_text, CHUNK_SIZE_TOKENS)
             logger.info(
-                f"Note too large: {num_tokens} tokens, split into {len(chunks)} chunks."
+                f"Note '{title}' is too large ({num_tokens} tokens > {MODEL_TOKEN_LIMIT}). Returning summary."
             )
             summarized_chunks = [summarize_chunk(chunk) for chunk in chunks]
             full_summary = "\n\n".join(summarized_chunks)
-            return f"Note is too large, providing summarized version:\n\n{full_summary}"
+            return f"Note '{title}' in '{display_folder}' is too large, providing summarized version:\n\n{full_summary}"
 
+    except (FileNotFoundError, ValueError, TypeError, RuntimeError, OSError) as e:
+        logger.error(f"Failed to read note '{title}': {e}", exc_info=isinstance(e, (RuntimeError, OSError)))
+        return f"Failed to read note '{title}'. Error: {e}"
     except Exception as e:
-        logger.error(f"Failed to read or summarize note: {e}")
-        return "Failed to read note."
+        logger.error(f"Unexpected error reading note '{title}': {e}", exc_info=True)
+        return f"Failed to read note '{title}'. Unexpected error: {e}"
 
 
 def update_note(title: str, new_content: str, folder_name: Optional[str] = None) -> str:
-    """
-    Updates the content of an existing note.
-
-    Args:
-        title: The title of the note to update.
-        new_content: The new content to write to the note.
-        folder_name: Optional subfolder name containing the note.
-
-    Returns:
-        A status message indicating success or failure.
-    """
+    """Updates the content of an existing note."""
     logger.debug(f"Updating note: title='{title}', folder_name='{folder_name}'")
     try:
-        note_path = get_note_path(title, folder_name)
-        if not note_path.exists():
-            return f"Note '{title}' not found."
+        note_path, display_folder = resolve_note_path(title, folder_name, ensure_exists=True)
+
+        if note_path is None:
+            folder_info = f" in folder '{display_folder}'" if folder_name else ""
+            logger.warning(f"Note '{title}'{folder_info} not found for update.")
+            return f"Note '{title}'{folder_info} not found."
+
+        logger.debug(f"Writing update to: {note_path}")
         note_path.write_text(new_content, encoding="utf-8")
-        return f"Note '{title}' updated."
+        return f"Note '{title}' in '{display_folder}' updated."
+
+    except (FileNotFoundError, ValueError, TypeError, RuntimeError, OSError) as e:
+        logger.error(f"Failed to update note '{title}': {e}", exc_info=isinstance(e, (RuntimeError, OSError)))
+        return f"Failed to update note '{title}'. Error: {e}"
     except Exception as e:
-        logger.error(f"Failed to update note: {e}")
-        return "Failed to update note."
+        logger.error(f"Unexpected error updating note '{title}': {e}", exc_info=True)
+        return f"Failed to update note '{title}'. Unexpected error: {e}"
 
 
 def delete_note(title: str, folder_name: Optional[str] = None) -> str:
-    """
-    Deletes an existing note.
-
-    Args:
-        title: The title of the note to delete.
-        folder_name: Optional subfolder name containing the note.
-
-    Returns:
-        A status message indicating success or failure.
-    """
+    """Deletes an existing note."""
     logger.debug(f"Deleting note: title='{title}', folder_name='{folder_name}'")
     try:
-        note_path = get_note_path(title, folder_name)
-        if not note_path.exists():
-            return f"Note '{title}' not found."
+        note_path, display_folder = resolve_note_path(title, folder_name, ensure_exists=True)
+
+        if note_path is None:
+            folder_info = f" in folder '{display_folder}'" if folder_name else ""
+            logger.warning(f"Note '{title}'{folder_info} not found for deletion.")
+            return f"Note '{title}'{folder_info} not found."
+
+        logger.debug(f"Deleting file: {note_path}")
         note_path.unlink()
-        return f"Note '{title}' deleted."
+        return f"Note '{title}' in '{display_folder}' deleted."
+
+    except (FileNotFoundError, ValueError, TypeError, RuntimeError, OSError) as e:
+        logger.error(f"Failed to delete note '{title}': {e}", exc_info=isinstance(e, (RuntimeError, OSError)))
+        return f"Failed to delete note '{title}'. Error: {e}"
     except Exception as e:
-        logger.error(f"Failed to delete note: {e}")
-        return "Failed to delete note."
+        logger.error(f"Unexpected error deleting note '{title}': {e}", exc_info=True)
+        return f"Failed to delete note '{title}'. Unexpected error: {e}"
 
-
-def load_vectors(json_path: str) -> Tuple[np.ndarray, List[str]]:
-    """
-    Loads embeddings and corresponding file paths from a JSON file.
-
-    Args:
-        json_path: Path to the JSON file containing embedding data.
-
-    Returns:
-        A tuple containing a numpy array of embeddings and a list of file paths.
-    """
+def load_vectors(json_path: Path) -> Tuple[np.ndarray, List[str]]:
+    """Loads embeddings and paths from JSON."""
     logger.debug(f"Loading vectors from: {json_path}")
-    with open(json_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    logger.info(f"Loaded {len(data['vectors'])} vectors from {json_path}")
-    embeddings = []
-    paths = []
-    for item in data["vectors"]:
-        embeddings.append(item["embedding"])
-        paths.append(item["path"])
-    return np.array(embeddings, dtype=np.float32), paths
+    if not json_path.is_file():
+        logger.error(f"Embeddings JSON file not found: {json_path}")
+        raise FileNotFoundError(f"Embeddings JSON file not found: {json_path}")
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if "vectors" not in data or not isinstance(data["vectors"], list):
+             raise ValueError("Invalid format in embeddings JSON file: 'vectors' key missing or not a list.")
+
+        embeddings = []
+        paths = []
+        for item in data["vectors"]:
+            if "embedding" in item and "path" in item:
+                embeddings.append(item["embedding"])
+                paths.append(item["path"])
+            else:
+                logger.warning("Skipping invalid item in embeddings JSON.")
+
+        if not embeddings:
+             raise ValueError("No valid embeddings found in JSON file.")
+
+        logger.info(f"Loaded {len(embeddings)} vectors from {json_path}")
+        return np.array(embeddings, dtype=np.float32), paths
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decoding JSON from {json_path}: {e}")
+        raise ValueError(f"Invalid JSON in embeddings file: {e}") from e
+    except Exception as e:
+        logger.error(f"Failed to load vectors from {json_path}: {e}", exc_info=True)
+        raise
 
 
 def initialize_semantic_search(
-    vector_json_path: str, model_name: str = "nomic-ai/nomic-embed-text-v1.5"
+    model_name: str = "nomic-ai/nomic-embed-text-v1.5", # Or get from config
+    force_reload: bool = False
 ):
-    """
-    Initializes the semantic search components (model, vectors, paths).
-
-    Loads the sentence transformer model and the precomputed embeddings from disk.
-    Avoids reloading if components are already in memory.
-
-    Args:
-        vector_json_path: Path to the JSON file containing embeddings.
-        model_name: The name of the sentence transformer model to use.
-    """
-    global cached_embeddings, cached_paths, model
+    """Initializes semantic search model and loads vectors."""
+    global _cached_embeddings, _cached_paths, _semantic_model
     logger.debug(f"Initializing semantic search with model '{model_name}'")
-    if cached_embeddings is not None and cached_paths is not None and model is not None:
-        return
+
+    vector_json_path = OBSIDIAN_VAULT_PATH / EMBEDDINGS_PATH
+    logger.info(f"Embeddings path: {vector_json_path}")
+
+    if not force_reload and _cached_embeddings is not None and _cached_paths is not None and _semantic_model is not None:
+        logger.info("Semantic search components already initialized.")
+        return True
+
     try:
-        cached_embeddings, cached_paths = load_vectors(vector_json_path)
-        model = SentenceTransformer(model_name, trust_remote_code=True)
+        logger.info("Loading embeddings...")
+        _cached_embeddings, _cached_paths = load_vectors(vector_json_path)
+
+        logger.info(f"Loading sentence transformer model: {model_name}...")
+        _semantic_model = SentenceTransformer(model_name, trust_remote_code=True)
+
         logger.info(
-            f"Semantic search initialized: {cached_embeddings.shape[0]} embeddings loaded."
+            f"Semantic search initialized: {_cached_embeddings.shape[0]} embeddings loaded."
         )
+        return True
+    except (FileNotFoundError, ValueError, ImportError) as e:
+        logger.error(f"Semantic search initialization failed: {e}")
+        _cached_embeddings, _cached_paths, _semantic_model = None, None, None
+        return False
     except Exception as e:
-        logger.error(f"Initialization failed: {e}")
-        cached_embeddings, cached_paths, model = None, None, None
+        logger.error(f"Unexpected error during semantic search initialization: {e}", exc_info=True)
+        _cached_embeddings, _cached_paths, _semantic_model = None, None, None
+        return False
 
-
-def semantic_search(
-    query: str, embeddings: np.ndarray, paths: List[str], top_k: int = 5
-) -> List[str]:
-    """
-    Performs semantic search using cosine similarity between query and note embeddings.
-
-    Falls back to recursive filename search if no strong semantic matches are found.
-
-    Args:
-        query: The search query string.
-        embeddings: Precomputed embeddings for the notes.
-        paths: List of file paths corresponding to the embeddings.
-        top_k: The maximum number of results to return.
-
-    Returns:
-        A list of file paths matching the query, sorted by relevance.
-    """
-    logger.debug(f"Performing semantic search for query: '{query}'")
-    global cached_embeddings, cached_paths, model
-
-    if cached_embeddings is None or cached_paths is None or model is None:
-        logger.warning(
-            "Semantic search not initialized. Call initialize_semantic_search first."
-        )
-        return []
-
-    query_vec = model.encode([query], convert_to_numpy=True)
-    similarities = cosine_similarity(query_vec, embeddings)[0]
-
-    top_indices = similarities.argsort()[-top_k:][::-1]
-    top_scores = similarities[top_indices]
-    logger.info(f"Top {top_k} matches: {top_scores}")
-
-    if np.all(top_scores < 1):
-        logger.info(
-            "No strong semantic matches found. Falling back to recursive filename search."
-        )
-        matched_paths = recursive_filename_search(query, OBSIDIAN_VAULT_PATH)
-        return matched_paths[:top_k] if matched_paths else []
-
-    return [paths[i] for i in top_indices]
-
-
-def recursive_filename_search(query: str, root_dir: str) -> List[str]:
-    """
-    Recursively searches for files within a directory whose names contain the query string.
-
-    Args:
-        query: The string to search for in filenames (case-insensitive).
-        root_dir: The directory to start the search from.
-
-    Returns:
-        A list of full file paths matching the query.
-    """
-    logger.debug(
-        f"Recursively searching filenames for query: '{query}' in root_dir: '{root_dir}'"
-    )
+def recursive_filename_search(query: str, vault: Vault) -> List[str]:
+    """Searches markdown note filenames within the vault."""
+    logger.debug(f"Recursively searching filenames for query: '{query}' using obsidiantools")
     matches = []
     query_lower = query.lower()
-    for dirpath, _, filenames in os.walk(root_dir):
-        for filename in filenames:
-            if query_lower in filename.lower():
-                full_path = os.path.join(dirpath, filename)
-                matches.append(full_path)
+    try:
+        for note_path in vault.dirpath.rglob("*.md"):
+            if query_lower in note_path.name.lower():
+                matches.append(str(note_path))
+    except Exception as e:
+         logger.error(f"Error during recursive filename search: {e}", exc_info=True)
     return matches
 
 
-def search_notes_by_semantics(
-    query: str, vector_json_path: str, top_k: int = 5
-) -> List[str]:
-    """
-    Wrapper function to perform semantic search on notes using precomputed vectors.
+def semantic_search(query: str, top_k: int = 5) -> List[str]:
+    """Performs semantic search using loaded model and embeddings."""
+    global _cached_embeddings, _cached_paths, _semantic_model
+    logger.debug(f"Performing semantic search for query: '{query}'")
 
-    Args:
-        query: The search query string.
-        vector_json_path: Path to the JSON file containing embeddings.
-        top_k: The maximum number of results to return.
+    if not SEMANTIC_SEARCH_ENABLED:
+         logger.warning("Semantic search is disabled in config.")
+         return []
 
-    Returns:
-        A list of file paths matching the query, sorted by relevance, or empty list on error.
-    """
-    logger.debug(f"Searching notes by semantics for query: '{query}'")
+    # Ensure initialization
+    if _cached_embeddings is None or _cached_paths is None or _semantic_model is None:
+        logger.warning("Semantic search not initialized. Attempting initialization...")
+        if not initialize_semantic_search():
+            logger.error("Cannot perform semantic search: Initialization failed.")
+            return []
+
     try:
-        embeddings, paths = load_vectors(vector_json_path)
-        return semantic_search(query, embeddings, paths, top_k)
+        vault = _get_vault()
+
+        query_vec = _semantic_model.encode([query], convert_to_numpy=True)
+        similarities = cosine_similarity(query_vec, _cached_embeddings)[0]
+
+        effective_top_k = min(top_k, len(_cached_paths))
+        if effective_top_k <= 0: return []
+
+        top_indices = np.argsort(similarities)[-effective_top_k:][::-1]
+        top_scores = similarities[top_indices]
+        logger.info(f"Top {effective_top_k} semantic matches scores: {top_scores}")
+
+        strong_match_indices = [idx for idx, score in zip(top_indices, top_scores) if score >= SIMILARITY_THRESHOLD]
+
+        if not strong_match_indices:
+            logger.info(
+                f"No strong semantic matches found (threshold={SIMILARITY_THRESHOLD}). Falling back to filename search."
+            )
+            matched_paths = recursive_filename_search(query, vault)
+            return matched_paths[:top_k]
+        else:
+            logger.info(f"Found {len(strong_match_indices)} strong semantic matches.")
+            return [_cached_paths[i] for i in strong_match_indices]
+
     except Exception as e:
-        logger.error(f"Semantic search failed: {e}")
+        logger.error(f"Error during semantic search query: {e}", exc_info=True)
         return []
 
-
 def simple_search_by_keyword(keyword: str) -> List[str]:
-    """
-    Performs a simple keyword search through note content and filenames.
-
-    Args:
-        keyword: The keyword to search for (case-insensitive).
-
-    Returns:
-        A list of relative file paths (from vault root) for matching notes.
-    """
+    """Performs keyword search in markdown note filenames and content using obsidiantools."""
     logger.debug(f"Simple keyword search for: '{keyword}'")
-    matching_notes = []
+    matching_notes_relative: List[str] = []
     try:
-        for md_file in OBSIDIAN_VAULT_PATH.rglob("*.md"):
+        vault = _get_vault()
+        keyword_lower = keyword.lower()
+
+        for note_path in vault.dirpath.rglob("*.md"):
             try:
-                content = md_file.read_text(encoding="utf-8")
-                if (
-                    keyword.lower() in content.lower()
-                    or keyword.lower() in md_file.name.lower()
-                ):
-                    matching_notes.append(str(md_file.relative_to(OBSIDIAN_VAULT_PATH)))
+                match_found = False
+                if keyword_lower in note_path.name.lower():
+                    match_found = True
+
+                if not match_found:
+                    content = note_path.read_text(encoding="utf-8")
+                    if keyword_lower in content.lower():
+                        match_found = True
+
+                if match_found:
+                    relative_path = str(note_path.relative_to(vault.dirpath))
+                    matching_notes_relative.append(relative_path)
+                    logger.debug(f"Keyword found in: {relative_path}")
+
             except Exception as e:
-                logger.warning(f"Failed to read file {md_file}: {e}")
+                logger.warning(f"Failed to process file {note_path} during keyword search: {e}")
+
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
+         logger.error(f"Failed to perform keyword search: {e}")
     except Exception as e:
-        logger.error(f"Failed to search notes: {e}")
-    return matching_notes
+        logger.error(f"Unexpected error during keyword search: {e}", exc_info=True)
 
+    return sorted(list(set(matching_notes_relative)))
 
-def search_notes_by_content(keyword: str) -> List[str]:
-    """
-    Searches notes by content, using either semantic search or simple keyword search.
-
-    The search method depends on the SEMANTIC_SEARCH_ENABLED configuration flag.
-
-    Args:
-        keyword: The keyword or query string to search for.
-
-    Returns:
-        A list of file paths for matching notes.
-    """
-    logger.debug(f"Searching notes by content with keyword: '{keyword}'")
+def search_notes_by_content(query: str, top_k: int = 5) -> List[str]:
+    """Searches notes by content/keyword. Uses semantic or simple search based on config."""
+    logger.debug(f"Unified search for: '{query}', top_k={top_k}")
     if SEMANTIC_SEARCH_ENABLED:
-        initialize_semantic_search(OBSIDIAN_VAULT_PATH / EMBEDDINGS_PATH)
-        logger.info("Semantic search enabled")
-        return search_notes_by_semantics(keyword, OBSIDIAN_VAULT_PATH / EMBEDDINGS_PATH)
+        logger.info("Using semantic search.")
+        results = semantic_search(query, top_k)
+        logger.info(f"Semantic search returned {len(results)} results.")
+        return results
     else:
-        logger.info("Semantic search disabled")
-        return simple_search_by_keyword(keyword)
-
+        logger.info("Using simple keyword search.")
+        results = simple_search_by_keyword(query)
+        logger.info(f"Simple keyword search returned {len(results)} results.")
+        return results[:top_k]
 
 def create_folder(folder_name: str) -> str:
-    """
-    Creates a new folder within the Obsidian vault.
-
-    Args:
-        folder_name: The name of the folder to create. Can include subdirectories (e.g., "path/to/folder").
-
-    Returns:
-        A status message indicating success or failure.
-    """
+    """Creates a folder within the vault."""
     logger.debug(f"Creating folder: '{folder_name}'")
-    folder_path = OBSIDIAN_VAULT_PATH / folder_name
+    if not folder_name:
+        return "Folder name cannot be empty."
     try:
+        vault = _get_vault()
+        relative_folder_path = Path(folder_name.strip('/\\'))
+        folder_path = vault.dirpath / relative_folder_path
+        display_name = relative_folder_path.as_posix()
+
         if folder_path.exists():
-            return f"Folder '{folder_name}' already exists."
+            if folder_path.is_dir():
+                 logger.warning(f"Folder '{display_name}' already exists.")
+                 return f"Folder '{display_name}' already exists."
+            else:
+                 logger.error(f"Path '{display_name}' exists but is not a folder.")
+                 return f"Path '{display_name}' exists but is not a folder."
+
+        logger.debug(f"Creating directory: {folder_path}")
         folder_path.mkdir(parents=True, exist_ok=True)
-        return f"Folder '{folder_name}' created."
+        return f"Folder '{display_name}' created."
+
+    except (FileNotFoundError, ValueError, RuntimeError, OSError) as e:
+        logger.error(f"Failed to create folder '{folder_name}': {e}", exc_info=isinstance(e, (RuntimeError, OSError)))
+        return f"Failed to create folder '{folder_name}'. Error: {e}"
     except Exception as e:
-        logger.error(f"Failed to create folder: {e}")
-        return "Failed to create folder."
+        logger.error(f"Unexpected error creating folder '{folder_name}': {e}", exc_info=True)
+        return f"Failed to create folder '{folder_name}'. Unexpected error: {e}"
 
 
 def delete_folder(folder_name: str) -> str:
-    """
-    Deletes an empty folder from the Obsidian vault.
-
-    Args:
-        folder_name: The name of the folder to delete.
-
-    Returns:
-        A status message indicating success, failure, or if the folder is not empty.
-    """
+    """Deletes an *empty* folder from the vault."""
     logger.debug(f"Deleting folder: '{folder_name}'")
-    folder_path = OBSIDIAN_VAULT_PATH / folder_name
+    display_name = ""
+    if not folder_name:
+        return "Folder name cannot be empty."
     try:
+        vault = _get_vault()
+        relative_folder_path = Path(folder_name.strip('/\\'))
+        folder_path = vault.dirpath / relative_folder_path
+        display_name = relative_folder_path.as_posix()
+
         if not folder_path.exists():
-            return f"Folder '{folder_name}' not found."
+            logger.warning(f"Folder '{display_name}' not found for deletion.")
+            return f"Folder '{display_name}' not found."
+        if not folder_path.is_dir():
+            logger.warning(f"Path '{display_name}' is not a folder.")
+            return f"Path '{display_name}' is not a folder."
+
+        logger.debug(f"Attempting to delete directory: {folder_path}")
         folder_path.rmdir()
-        return f"Folder '{folder_name}' deleted."
-    except OSError:
-        return f"Folder '{folder_name}' is not empty. Delete files first."
+        return f"Folder '{display_name}' deleted."
+
+    except OSError as e:
+        if "Directory not empty" in str(e) or "[Errno 39]" in str(e) or "[WinError 145]" in str(e) :
+            logger.warning(f"Folder '{display_name}' is not empty.")
+            return f"Folder '{display_name}' is not empty. Delete content first."
+        else:
+             logger.error(f"OS Error deleting folder '{display_name}': {e}", exc_info=True)
+             return f"Failed to delete folder '{display_name}'. OS Error: {e}"
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
+         logger.error(f"Failed to delete folder '{display_name}': {e}", exc_info=isinstance(e, RuntimeError))
+         return f"Failed to delete folder '{display_name}'. Error: {e}"
     except Exception as e:
-        logger.error(f"Failed to delete folder: {e}")
-        return "Failed to delete folder."
+        logger.error(f"Unexpected error deleting folder '{display_name}': {e}", exc_info=True)
+        return f"Failed to delete folder '{display_name}'. Unexpected error: {e}"
 
 
 def search_folders(keyword: str) -> List[str]:
-    """
-    Searches for folders within the vault whose names contain the keyword.
-
-    Args:
-        keyword: The string to search for in folder names (case-insensitive).
-
-    Returns:
-        A list of relative folder paths (from vault root) matching the keyword.
-    """
+    """Searches folder names within the vault."""
     logger.debug(f"Searching folders with keyword: '{keyword}'")
+    matching_folders_relative: List[str] = []
     try:
-        return [
-            str(folder.relative_to(OBSIDIAN_VAULT_PATH))
-            for folder in OBSIDIAN_VAULT_PATH.rglob("*")
-            if folder.is_dir() and keyword.lower() in folder.name.lower()
-        ]
-    except Exception as e:
+        vault = _get_vault()
+        keyword_lower = keyword.lower()
+
+        for item in vault.dirpath.rglob("*"):
+            if item.is_dir() and keyword_lower in item.name.lower():
+                 relative_path = str(item.relative_to(vault.dirpath))
+                 matching_folders_relative.append(relative_path)
+
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
         logger.error(f"Failed to search folders: {e}")
-        return []
+    except Exception as e:
+        logger.error(f"Unexpected error searching folders: {e}", exc_info=True)
+
+    return sorted(list(set(matching_folders_relative)))
 
 
 def list_folders() -> List[str]:
-    """
-    Lists all folders within the Obsidian vault.
-
-    Returns:
-        A list of relative folder paths (from vault root).
-    """
+    """Lists all folders within the Obsidian vault."""
     logger.debug("Listing all folders")
+    folders_relative: List[str] = []
     try:
-        return [
-            str(folder.relative_to(OBSIDIAN_VAULT_PATH))
-            for folder in OBSIDIAN_VAULT_PATH.rglob("*")
-            if folder.is_dir()
-        ]
-    except Exception as e:
+        vault = _get_vault()
+        for item in vault.dirpath.rglob("*"):
+            if item.is_dir():
+                 relative_path = str(item.relative_to(vault.dirpath))
+                 folders_relative.append(relative_path)
+
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
         logger.error(f"Failed to list folders: {e}")
-        return []
+    except Exception as e:
+        logger.error(f"Unexpected error listing folders: {e}", exc_info=True)
+
+    return sorted([f for f in list(set(folders_relative)) if f != '.'])
+
+if SEMANTIC_SEARCH_ENABLED:
+    initialize_semantic_search()
